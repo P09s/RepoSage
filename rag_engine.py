@@ -102,17 +102,21 @@ def multihop_retrieve(vectorstore: Chroma, question: str, k: int = 6) -> list[Do
         if fp:
             related_files.add(fp)
 
-    # Second hop: fetch more chunks from those same files
+    # Second hop: fetch more chunks from those same files using DB filtering
     second_hop_docs = []
     if related_files:
-        all_docs = vectorstore.get()
-        if all_docs and "documents" in all_docs:
-            for i, content in enumerate(all_docs["documents"]):
-                meta = all_docs["metadatas"][i]
-                if meta.get("filepath") in related_files:
-                    second_hop_docs.append(
-                        Document(page_content=content, metadata=meta)
-                    )
+        # Use Chroma's $in operator to fetch only the files we want
+        query_filter = {"filepath": {"$in": list(related_files)}}
+        
+        # Query the underlying Chroma DB directly
+        related_data = vectorstore.get(where=query_filter)
+        
+        if related_data and "documents" in related_data:
+            for i, content in enumerate(related_data["documents"]):
+                meta = related_data["metadatas"][i]
+                second_hop_docs.append(
+                    Document(page_content=content, metadata=meta)
+                )
 
     # Merge, deduplicate by content
     seen = set()
